@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LAN P2P Chat (Manual)</title>
+</head>
+<body>
+  <h2>Peer-to-Peer Chat</h2>
+
+  <textarea id="chat" rows="10" cols="50" readonly></textarea><br>
+  <input type="text" id="message" placeholder="Type message">
+  <button onclick="sendMessage()">Send</button>
+
+  <h3>Manual Signaling</h3>
+  <button onclick="createOffer()">Create Offer</button>
+  <button onclick="createAnswer()">Create Answer</button><br><br>
+
+  <textarea id="local" rows="6" cols="50" placeholder="Local SDP"></textarea><br>
+  <textarea id="remote" rows="6" cols="50" placeholder="Paste Remote SDP here"></textarea><br>
+  <button onclick="setRemote()">Set Remote Description</button>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const messageInput = document.getElementById('message');
+    const local = document.getElementById('local');
+    const remote = document.getElementById('remote');
+
+    const pc = new RTCPeerConnection();
+    let dataChannel;
+
+    pc.onicecandidate = e => {
+      if (e.candidate === null) {
+        local.value = JSON.stringify(pc.localDescription);
+      }
+    };
+
+    pc.ondatachannel = e => {
+      dataChannel = e.channel;
+      dataChannel.onmessage = msg => {
+        chat.value += `Peer: ${msg.data}\n`;
+      };
+    };
+
+    function sendMessage() {
+      const msg = messageInput.value;
+      chat.value += `You: ${msg}\n`;
+      dataChannel.send(msg);
+      messageInput.value = '';
+    }
+
+    function createOffer() {
+      dataChannel = pc.createDataChannel('chat');
+      dataChannel.onmessage = msg => {
+        chat.value += `Peer: ${msg.data}\n`;
+      };
+      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+    }
+
+    function createAnswer() {
+      pc.setRemoteDescription(JSON.parse(remote.value)).then(() => {
+        pc.createAnswer().then(answer => pc.setLocalDescription(answer));
+      });
+    }
+
+    function setRemote() {
+      pc.setRemoteDescription(JSON.parse(remote.value));
+    }
+  </script>
+</body>
+</html>
