@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>P2P Tic Tac Toe with PixiJS</title>
+  <script src="https://pixijs.download/release/pixi.js"></script>
+</head>
+<body>
+  <h3>Manual Signaling</h3>
+  <button onclick="createOffer()">Create Offer</button>
+  <button onclick="createAnswer()">Create Answer</button><br><br>
+  <textarea id="local" rows="6" cols="60" placeholder="Local SDP"></textarea><br>
+  <textarea id="remote" rows="6" cols="60" placeholder="Paste Remote SDP here"></textarea><br>
+  <button onclick="setRemote()">Set Remote Description</button>
+
+  <script>
+    // === PIXI Setup ===
+    const app = new PIXI.Application({ width: 600, height: 600, backgroundColor: 0xffffff });
+    document.body.appendChild(app.view);
+
+    const cellSize = 200;
+    const board = Array(9).fill(null);
+    let currentPlayer = 'X';
+    let isMyTurn = true;
+
+    const style = new PIXI.TextStyle({ fontSize: 120, fill: '#333' });
+    const cells = [];
+
+    for (let i = 0; i < 9; i++) {
+      const x = (i % 3) * cellSize;
+      const y = Math.floor(i / 3) * cellSize;
+
+      const box = new PIXI.Graphics();
+      box.lineStyle(4, 0x000000).drawRect(x, y, cellSize, cellSize);
+      box.interactive = true;
+      box.buttonMode = true;
+
+      const text = new PIXI.Text('', style);
+      text.anchor.set(0.5);
+      text.x = x + cellSize / 2;
+      text.y = y + cellSize / 2;
+
+      box.on('pointerdown', () => {
+        if (isMyTurn && !board[i]) {
+          board[i] = currentPlayer;
+          text.text = currentPlayer;
+          sendMove(i);
+          checkWin();
+          currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+          isMyTurn = false;
+        }
+      });
+
+      app.stage.addChild(box);
+      app.stage.addChild(text);
+      cells.push({ box, text });
+    }
+
+    function applyMove(index, symbol) {
+      if (!board[index]) {
+        board[index] = symbol;
+        cells[index].text.text = symbol;
+        currentPlayer = symbol === 'X' ? 'O' : 'X';
+        isMyTurn = true;
+        checkWin();
+      }
+    }
+
+    function checkWin() {
+      const wins = [
+        [0,1,2], [3,4,5], [6,7,8],
+        [0,3,6], [1,4,7], [2,5,8],
+        [0,4,8], [2,4,6]
+      ];
+      for (const [a,b,c] of wins) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          alert(`${board[a]} wins!`);
+          resetBoard();
+          break;
+        }
+      }
+    }
+
+    function resetBoard() {
+      board.fill(null);
+      currentPlayer = 'X';
+      isMyTurn = true;
+      cells.forEach(cell => cell.text.text = '');
+    }
+
+    // === WebRTC Setup ===
+    const local = document.getElementById('local');
+    const remote = document.getElementById('remote');
+    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    const pc = new RTCPeerConnection(config);
+    let dc;
+
+    pc.onicecandidate = e => {
+      if (!e.candidate) local.value = JSON.stringify(pc.localDescription);
+    };
+
+    pc.ondatachannel = e => {
+      dc = e.channel;
+      dc.onmessage = msg => {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'move') applyMove(data.index, data.symbol);
+      };
+    };
+
+    function sendMove(index) {
+      if (dc && dc.readyState === 'open') {
+        dc.send(JSON.stringify({ type: 'move', index, symbol: currentPlayer }));
+      }
+    }
+
+    function createOffer() {
+      dc = pc.createDataChannel('game');
+      dc.onmessage = msg => {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'move') applyMove(data.index, data.symbol);
+      };
+      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+    }
+
+    function createAnswer() {
+      const desc = JSON.parse(remote.value);
+      pc.setRemoteDescription(desc).then(() => {
+        pc.createAnswer().then(answer => pc.setLocalDescription(answer));
+      });
+    }
+
+    function setRemote() {
+      const desc = JSON.parse(remote.value);
+      pc.setRemoteDescription(desc);
+    }
+  </script>
+</body>
+</html>
