@@ -3,14 +3,18 @@
 <head>
   <title>P2P Tic Tac Toe with PixiJS</title>
   <script src="https://pixijs.download/release/pixi.js"></script>
+  <style>
+    body { font-family: sans-serif; }
+    textarea { width: 600px; height: 100px; }
+  </style>
 </head>
 <body>
-  <h3>Manual Signaling</h3>
-  <button onclick="createOffer()">Create Offer</button>
-  <button onclick="createAnswer()">Create Answer</button><br><br>
-  <textarea id="local" rows="6" cols="60" placeholder="Local SDP"></textarea><br>
-  <textarea id="remote" rows="6" cols="60" placeholder="Paste Remote SDP here"></textarea><br>
-  <button onclick="setRemote()">Set Remote Description</button>
+  <h2>Manual WebRTC Signaling</h2>
+  <button onclick="startOffer()">Create Offer</button>
+  <button onclick="startAnswer()">Create Answer</button>
+  <button onclick="setRemote()">Set Remote Description</button><br><br>
+  <textarea id="local" placeholder="Local SDP will appear here"></textarea><br>
+  <textarea id="remote" placeholder="Paste remote SDP here"></textarea><br>
 
   <script>
     // === PIXI Setup ===
@@ -25,34 +29,36 @@
     const style = new PIXI.TextStyle({ fontSize: 120, fill: '#333' });
     const cells = [];
 
-    for (let i = 0; i < 9; i++) {
-      const x = (i % 3) * cellSize;
-      const y = Math.floor(i / 3) * cellSize;
+    function drawBoard() {
+      for (let i = 0; i < 9; i++) {
+        const x = (i % 3) * cellSize;
+        const y = Math.floor(i / 3) * cellSize;
 
-      const box = new PIXI.Graphics();
-      box.lineStyle(4, 0x000000).drawRect(x, y, cellSize, cellSize);
-      box.interactive = true;
-      box.buttonMode = true;
+        const box = new PIXI.Graphics();
+        box.lineStyle(4, 0x000000).drawRect(x, y, cellSize, cellSize);
+        box.interactive = true;
+        box.buttonMode = true;
 
-      const text = new PIXI.Text('', style);
-      text.anchor.set(0.5);
-      text.x = x + cellSize / 2;
-      text.y = y + cellSize / 2;
+        const text = new PIXI.Text('', style);
+        text.anchor.set(0.5);
+        text.x = x + cellSize / 2;
+        text.y = y + cellSize / 2;
 
-      box.on('pointerdown', () => {
-        if (isMyTurn && !board[i]) {
-          board[i] = currentPlayer;
-          text.text = currentPlayer;
-          sendMove(i);
-          checkWin();
-          currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-          isMyTurn = false;
-        }
-      });
+        box.on('pointerdown', () => {
+          if (isMyTurn && !board[i]) {
+            board[i] = currentPlayer;
+            text.text = currentPlayer;
+            sendMove(i, currentPlayer);
+            checkWin();
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            isMyTurn = false;
+          }
+        });
 
-      app.stage.addChild(box);
-      app.stage.addChild(text);
-      cells.push({ box, text });
+        app.stage.addChild(box);
+        app.stage.addChild(text);
+        cells.push({ box, text });
+      }
     }
 
     function applyMove(index, symbol) {
@@ -87,6 +93,8 @@
       cells.forEach(cell => cell.text.text = '');
     }
 
+    drawBoard();
+
     // === WebRTC Setup ===
     const local = document.getElementById('local');
     const remote = document.getElementById('remote');
@@ -95,7 +103,9 @@
     let dc;
 
     pc.onicecandidate = e => {
-      if (!e.candidate) local.value = JSON.stringify(pc.localDescription);
+      if (!e.candidate) {
+        local.value = JSON.stringify(pc.localDescription);
+      }
     };
 
     pc.ondatachannel = e => {
@@ -106,13 +116,13 @@
       };
     };
 
-    function sendMove(index) {
+    function sendMove(index, symbol) {
       if (dc && dc.readyState === 'open') {
-        dc.send(JSON.stringify({ type: 'move', index, symbol: currentPlayer }));
+        dc.send(JSON.stringify({ type: 'move', index, symbol }));
       }
     }
 
-    function createOffer() {
+    function startOffer() {
       dc = pc.createDataChannel('game');
       dc.onmessage = msg => {
         const data = JSON.parse(msg.data);
@@ -121,7 +131,7 @@
       pc.createOffer().then(offer => pc.setLocalDescription(offer));
     }
 
-    function createAnswer() {
+    function startAnswer() {
       const desc = JSON.parse(remote.value);
       pc.setRemoteDescription(desc).then(() => {
         pc.createAnswer().then(answer => pc.setLocalDescription(answer));
